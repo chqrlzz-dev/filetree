@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Neural Tree Architect v0.5.0</title>
+  <title>Neural Tree Architect v0.7.5</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -354,8 +354,50 @@
 
     #ascii-render .root-node { color: var(--root-color); font-weight: 700; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
     #ascii-render .branch { color: var(--branch-char); }
-    #ascii-render .node-text { cursor: pointer; transition: background 0.2s; border-radius: 2px; padding: 0 2px; }
+    #ascii-render .node-text { cursor: pointer; transition: background 0.2s; border-radius: 2px; padding: 0 2px; position: relative; }
     #ascii-render .node-text:hover { background: var(--bg-raised); color: var(--text); }
+    #ascii-render .node-text:hover::after {
+      content: '✎';
+      position: absolute;
+      top: -15px;
+      right: 0;
+      font-size: 0.6rem;
+      background: var(--accent);
+      color: var(--bg);
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+    #ascii-render .node-text.drag-over {
+      background: var(--accent-green) !important;
+      color: #000 !important;
+      box-shadow: 0 0 25px var(--accent-green), 0 0 50px rgba(16, 185, 129, 0.3);
+      transform: scale(1.05);
+      z-index: 50;
+    }
+    #ascii-render .node-text.dragging {
+      opacity: 0.2;
+      filter: grayscale(1);
+    }
+    #ascii-render .node-text.ghost, 
+    #ascii-render .branch.ghost {
+      color: #fff !important;
+      background: var(--accent-green) !important;
+      box-shadow: 0 0 20px var(--accent-green);
+      text-shadow: 0 0 5px rgba(0,0,0,0.5);
+      opacity: 1 !important;
+    }
+    #ascii-render .branch.ghost {
+      padding-left: 4px;
+      border-top-left-radius: 4px;
+      border-bottom-left-radius: 4px;
+      font-weight: 800;
+    }
+    #ascii-render .node-text.ghost {
+      padding-right: 8px;
+      border-top-right-radius: 4px;
+      border-bottom-right-radius: 4px;
+      font-style: italic;
+    }
     #ascii-render .highlight { 
       background: var(--accent); color: var(--bg); 
       border-radius: 2px; padding: 0 4px;
@@ -392,6 +434,28 @@
 
     .theme-dot { width: 12px; height: 12px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; }
     .theme-dot.active { border-color: white; transform: scale(1.2); }
+
+    /* ── MODAL SYSTEM ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(4px); z-index: 10001;
+      display: none; align-items: center; justify-content: center;
+      padding: 1rem;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal-content {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: 16px; width: 100%; max-width: 500px;
+      max-height: 90vh; overflow-y: auto; position: relative;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+    }
+    .modal-header {
+      padding: 1.25rem; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .modal-body { padding: 1.25rem; }
+    .modal-close { cursor: pointer; opacity: 0.5; transition: opacity 0.2s; }
+    .modal-close:hover { opacity: 1; }
   </style>
 </head>
 <body data-theme="default">
@@ -406,21 +470,23 @@
       <div class="header-info">
         <h1>Neural Tree</h1>
         <div class="flex gap-2 mt-0.5">
-          <div class="theme-dot bg-sky-500 active" data-set-theme="default"></div>
-          <div class="theme-dot bg-emerald-500" data-set-theme="matrix"></div>
-          <div class="theme-dot bg-amber-500" data-set-theme="amber"></div>
+          <div class="theme-dot bg-sky-500 active" data-set-theme="default" title="Default Neon"></div>
+          <div class="theme-dot bg-emerald-500" data-set-theme="matrix" title="Matrix Mode"></div>
+          <div class="theme-dot bg-amber-500" data-set-theme="amber" title="Amber CRT"></div>
         </div>
       </div>
     </div>
     
     <div class="header-actions flex items-center gap-2">
       <div class="flex gap-1 border-r border-slate-800 pr-2 mr-1">
-        <button class="action-btn" id="btn-undo"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M20 20v-7a4 4 0 00-4-4H4"/></svg></button>
-        <button class="action-btn" id="btn-redo"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M4 20v-7a4 4 0 014-4h12"/></svg></button>
+        <button class="action-btn" id="btn-undo" title="Undo (Ctrl+Z)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M20 20v-7a4 4 0 00-4-4H4"/></svg></button>
+        <button class="action-btn" id="btn-redo" title="Redo (Ctrl+Y)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M4 20v-7a4 4 0 014-4h12"/></svg></button>
       </div>
-      <button class="btn btn-outline" id="btn-import">Imp</button>
-      <button class="btn btn-outline" id="btn-export-json">JSON</button>
-      <button class="btn btn-primary" id="btn-copy">Copy</button>
+      <button class="btn btn-outline" id="btn-tips" title="How to use">Tips</button>
+      <button class="btn btn-outline text-red-400 border-red-900/30" id="btn-clear-all" title="Clear all nodes">Clear</button>
+      <button class="btn btn-outline" id="btn-import" title="Import JSON">Imp</button>
+      <button class="btn btn-outline" id="btn-export-json" title="Export JSON">JSON</button>
+      <button class="btn btn-primary" id="btn-copy" title="Copy ASCII Tree">Copy</button>
       <input type="file" id="file-input" hidden accept=".json">
     </div>
   </header>
@@ -432,14 +498,14 @@
           <span class="absolute left-2.5 text-slate-500">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           </span>
-          <input type="text" id="node-search" class="search-input" placeholder="Search...">
+          <input type="text" id="node-search" class="search-input" placeholder="Search nodes...">
         </div>
-        <button class="action-btn" id="btn-expand-all"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
+        <button class="action-btn" id="btn-expand-all" title="Toggle All Nodes"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg></button>
       </div>
       <div id="breadcrumb-nav"></div>
       <div class="nodes-container" id="nodes-root-list"></div>
       <div class="p-4 border-t border-slate-800 bg-slate-900/50">
-        <button class="btn btn-outline w-full justify-center py-3" id="btn-add-root">+ Add New Root Node</button>
+        <button class="btn btn-outline w-full justify-center py-3" id="btn-add-root" title="Add a new root topic">+ Add New Root Node</button>
       </div>
     </aside>
 
@@ -447,7 +513,7 @@
       <div class="h-10 px-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40 text-[0.7rem]">
         <div class="flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-          <span class="text-slate-400 uppercase tracking-widest font-bold">Preview</span>
+          <span class="text-slate-400 uppercase tracking-widest font-bold">Live Preview</span>
         </div>
         <div class="flex gap-4 text-slate-500 mono">
           <span id="stat-nodes">NODES: 0</span>
@@ -468,18 +534,80 @@
 
   <footer class="h-8 px-6 border-t border-slate-800 flex items-center justify-between text-[0.6rem] text-slate-500 bg-slate-950/80">
     <div class="flex gap-4"><span>SYSTEM_READY</span><span>AUTO_SAVE: ON</span></div>
-    <div class="mono opacity-50">V0.5.0_CORE</div>
+    <div class="text-center">Made by <span id="footer-dev-link" class="text-slate-400 hover:text-accent cursor-pointer transition-colors">@chqrlzz</span></div>
+    <div class="mono opacity-50">V0.7.5_CORE</div>
   </footer>
+
+  <!-- ── MODALS ── -->
+  <div id="modal-tips" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="font-bold text-accent">Interface Tips</h3>
+        <span class="modal-close" onclick="closeModals()">✕</span>
+      </div>
+      <div class="modal-body space-y-4 text-sm text-slate-300">
+        <div class="p-3 bg-slate-900/50 rounded-lg border border-slate-800">
+          <p class="font-bold text-white mb-1">Live Editing</p>
+          <p>Click any node in the <span class="text-accent">Live Preview</span> to instantly rename it. No need to hunt for it in the sidebar.</p>
+        </div>
+        <div class="p-3 bg-slate-900/50 rounded-lg border border-slate-800">
+          <p class="font-bold text-white mb-1">Architecture Controls</p>
+          <ul class="list-disc ml-4 space-y-1">
+            <li><span class="text-accent font-mono">F</span>: Focus view on that specific node and its children.</li>
+            <li><span class="text-accent font-mono">+</span>: Add a new sub-topic (child node).</li>
+            <li><span class="text-accent font-mono">✎</span>: Edit text directly in the sidebar list.</li>
+          </ul>
+        </div>
+        <div class="p-3 bg-slate-900/50 rounded-lg border border-slate-800">
+          <p class="font-bold text-white mb-1">Shortcuts & Export</p>
+          <p>Use <span class="text-accent">JSON</span> to save your progress locally and <span class="text-accent">Copy</span> to get the plain-text ASCII tree for documentation.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal-dev" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="font-bold text-accent">Developer Contact</h3>
+        <span class="modal-close" onclick="closeModals()">✕</span>
+      </div>
+      <div class="modal-body">
+        <div class="text-center py-6">
+          <div class="w-16 h-16 bg-accent/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-accent/40">
+            <span class="text-2xl">@</span>
+          </div>
+          <h4 class="text-xl font-bold mb-1">chqrlzz</h4>
+          <p class="text-slate-400 text-sm mb-6">Neural Tree Architect Lead Developer</p>
+          
+          <div class="grid grid-cols-1 gap-3">
+            <a href="https://m.me/chqrlzz" target="_blank" class="btn btn-primary w-full py-4 text-base">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 24 24" class="mr-2"><path d="M12 2C6.477 2 2 6.145 2 11.258c0 2.91 1.455 5.503 3.735 7.153V22l3.414-1.874c.883.245 1.82.38 2.851.38 5.523 0 10-4.145 10-9.258S17.523 2 12 2zm.895 12.258l-2.553-2.723-4.974 2.723 5.474-5.816 2.632 2.723 4.895-2.723-5.474 5.816z"/></svg>
+              Facebook Messenger
+            </a>
+            <a href="https://t.me/chqrlzz" target="_blank" class="btn btn-outline w-full py-4 text-base border-sky-500 text-sky-400">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="currentColor" viewBox="0 0 24 24" class="mr-2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69.01-.03.01-.14-.07-.2-.08-.06-.19-.04-.27-.02-.11.02-1.93 1.23-5.46 3.62-.51.35-.98.53-1.39.52-.46-.01-1.33-.26-1.98-.48-.8-.27-1.43-.42-1.37-.89.03-.25.38-.51 1.03-.78 4.04-1.76 6.74-2.92 8.09-3.48 3.85-1.6 4.64-1.88 5.17-1.89.11 0 .37.03.54.17.14.12.18.28.2.45-.02.07-.02.13-.03.19z"/></svg>
+              Telegram
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <div id="toast"></div>
 
   <script>
     (() => {
       'use strict';
-      let treeData = [{ id: '1', label: 'Neural Core', children: [], expanded: true }];
+      let treeData = [{ id: '1', label: 'Main Topic', children: [], expanded: true }];
       let nodeIdCounter = 2;
       let activeNodeId = null;
       let focusNodeId = null;
+      let dragNodeId = null;
+      let dragNodeLabel = "";
+      let previewTargetId = null;
+      let longPressTimer = null;
 
       const history = {
         stack: [], index: -1,
@@ -511,9 +639,11 @@
       const mBtnSibling = document.getElementById('m-btn-sibling');
       const mBtnChild = document.getElementById('m-btn-child');
       const mBtnDelete = document.getElementById('m-btn-delete');
+      const btnTips = document.getElementById('btn-tips');
+      const footerDevLink = document.getElementById('footer-dev-link');
 
       function init() {
-        const saved = localStorage.getItem('neural_tree_v5');
+        const saved = localStorage.getItem('neural_tree_v6');
         if (saved) { try { const p = JSON.parse(saved); treeData = p.data; nodeIdCounter = p.counter; } catch(e){} }
         history.push({ data: treeData, counter: nodeIdCounter });
         render();
@@ -523,6 +653,7 @@
 
       function setupEventListeners() {
         btnAddRoot.onclick = () => addNode(null);
+        document.getElementById('btn-clear-all').onclick = clearAll;
         nodeSearch.oninput = renderNodeList;
         btnCopy.onclick = copyToClipboard;
         btnExportJson.onclick = exportJson;
@@ -535,19 +666,124 @@
         mBtnChild.onclick = () => { if (activeNodeId) addNode(activeNodeId); };
         mBtnDelete.onclick = () => { if (activeNodeId) deleteNode(activeNodeId); };
         document.querySelectorAll('[data-set-theme]').forEach(dot => dot.onclick = () => setTheme(dot.dataset.setTheme));
+        
+        btnTips.onclick = () => document.getElementById('modal-tips').classList.add('active');
+        if (footerDevLink) footerDevLink.onclick = () => document.getElementById('modal-dev').classList.add('active');
 
-        // Bi-Directional Preview Click
+        // Drag & Drop / Mobile Touch Logic
+        asciiRender.addEventListener('dragstart', (e) => {
+          const node = e.target.closest('.node-text');
+          if (node) {
+            dragNodeId = node.dataset.id;
+            dragNodeLabel = node.textContent;
+            node.classList.add('dragging');
+            e.dataTransfer.setData('text/plain', dragNodeId);
+          }
+        });
+
+        asciiRender.addEventListener('dragend', (e) => {
+          const node = e.target.closest('.node-text');
+          if (node) node.classList.remove('dragging');
+          previewTargetId = null;
+          document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+          render();
+        });
+
+        asciiRender.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          const node = e.target.closest('.node-text');
+          if (node && node.dataset.id !== dragNodeId) {
+            if (previewTargetId !== node.dataset.id) {
+              previewTargetId = node.dataset.id;
+              render(); 
+            }
+            node.classList.add('drag-over');
+          }
+        });
+
+        asciiRender.addEventListener('dragleave', (e) => {
+          const node = e.target.closest('.node-text');
+          if (node) {
+            node.classList.remove('drag-over');
+            if (previewTargetId === node.dataset.id) {
+              previewTargetId = null;
+              render();
+            }
+          }
+        });
+
+        asciiRender.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const targetNode = e.target.closest('.node-text');
+          if (targetNode && dragNodeId) {
+            moveNode(dragNodeId, targetNode.dataset.id);
+          }
+          dragNodeId = null;
+          previewTargetId = null;
+          render();
+        });
+
+        // Mobile Touch (Long Press to Drag)
+        asciiRender.addEventListener('touchstart', (e) => {
+          const node = e.target.closest('.node-text');
+          if (node) {
+            longPressTimer = setTimeout(() => {
+              dragNodeId = node.dataset.id;
+              node.classList.add('dragging');
+              showToast("Moving: " + node.textContent);
+            }, 600);
+          }
+        }, {passive: true});
+
+        asciiRender.addEventListener('touchend', (e) => {
+          clearTimeout(longPressTimer);
+          if (dragNodeId) {
+            const touch = e.changedTouches[0];
+            const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
+            const targetNode = targetEl ? targetEl.closest('.node-text') : null;
+            if (targetNode && targetNode.dataset.id !== dragNodeId) {
+              moveNode(dragNodeId, targetNode.dataset.id);
+            }
+            document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+            dragNodeId = null;
+          }
+        });
+
+        // Bi-Directional Preview Click & Edit
         asciiRender.onclick = (e) => {
           const node = e.target.closest('.node-text');
           if (node && node.dataset.id) {
-            activeNodeId = node.dataset.id;
-            focusNodeId = node.dataset.id; // Instant Focus Mode
+            const id = node.dataset.id;
+            
+            // Auto-expand parents to ensure node is visible in sidebar
+            const expandPath = (nodes, targetId) => {
+              for (const n of nodes) {
+                if (n.id === targetId) return true;
+                if (expandPath(n.children, targetId)) {
+                  n.expanded = true;
+                  return true;
+                }
+              }
+              return false;
+            };
+            
+            expandPath(treeData, id);
+            activeNodeId = id;
+            focusNodeId = null; // Reset focus view to ensure node appears in the main list
             render();
-            // Scroll sidebar to element
-            const targetRow = document.querySelector(`.node-row[data-id="${activeNodeId}"]`);
-            if (targetRow) targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Scroll and focus sidebar element
+            setTimeout(() => {
+              const targetRow = document.querySelector(`.node-row[data-id="${id}"]`);
+              if (targetRow) {
+                targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                focusNode(id);
+              }
+            }, 100);
           }
         };
+
+        window.closeModals = () => document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
       }
 
       function setTheme(t) {
@@ -557,7 +793,7 @@
 
       function applyState(s, name) { treeData = s.data; nodeIdCounter = s.counter; render(); saveToLocal(false); showToast(name); }
       function saveToLocal(record = true) {
-        localStorage.setItem('neural_tree_v5', JSON.stringify({ data: treeData, counter: nodeIdCounter }));
+        localStorage.setItem('neural_tree_v6', JSON.stringify({ data: treeData, counter: nodeIdCounter }));
         if (record) history.push({ data: treeData, counter: nodeIdCounter });
         updateStats();
       }
@@ -572,7 +808,15 @@
       }
 
       function addNode(parentId, siblingAfterId = null) {
-        const newNode = { id: String(nodeIdCounter++), label: 'New Node', children: [], expanded: true };
+        let label = "New Topic";
+        if (parentId === null) {
+          label = `Topic ${nodeIdCounter}`;
+        } else {
+          const p = findNode(treeData, parentId);
+          if (p) label = `Subtopic of ${p.label}`;
+        }
+        
+        const newNode = { id: String(nodeIdCounter++), label: label, children: [], expanded: true };
         if (parentId === null) {
           if (siblingAfterId) { const idx = treeData.findIndex(n => n.id === siblingAfterId); treeData.splice(idx + 1, 0, newNode); }
           else treeData.push(newNode);
@@ -588,6 +832,35 @@
         setTimeout(() => focusNode(newNode.id), 50);
       }
 
+      function moveNode(id, targetId) {
+        if (id === targetId) return;
+        // Prevent moving a node into its own children
+        const isDescendant = (parent, childId) => parent.children.some(c => c.id === childId || isDescendant(c, childId));
+        const movingNode = findNode(treeData, id);
+        if (!movingNode || isDescendant(movingNode, targetId)) {
+          showToast("Invalid Move");
+          return;
+        }
+
+        const parent = findParent(treeData, id);
+        const target = findNode(treeData, targetId);
+        
+        if (target) {
+          // Remove from old parent
+          const siblings = parent ? parent.children : treeData;
+          const idx = siblings.findIndex(n => n.id === id);
+          siblings.splice(idx, 1);
+          
+          // Add to new target
+          target.children.push(movingNode);
+          target.expanded = true;
+          
+          saveToLocal();
+          render();
+          showToast("Node Relocated");
+        }
+      }
+
       function deleteNode(id) {
         const del = (ns) => { const i = ns.findIndex(n => n.id === id); if (i !== -1) { ns.splice(i, 1); return true; } return ns.some(n => del(n.children)); };
         del(treeData); if (activeNodeId === id) activeNodeId = null; if (focusNodeId === id) focusNodeId = null;
@@ -601,7 +874,25 @@
         trav(treeData); render();
       }
 
-      function render() { renderNodeList(); renderASCII(); updateStats(); renderBreadcrumbs(); }
+      function clearAll() {
+        if (confirm("Permanently clear all nodes and reset to default?")) {
+          treeData = [{ id: '1', label: 'Main Topic', children: [], expanded: true }];
+          nodeIdCounter = 2;
+          activeNodeId = null;
+          focusNodeId = null;
+          render();
+          saveToLocal();
+          showToast("Tree Reset");
+        }
+      }
+
+      function render() { 
+        const draggingNodeObj = dragNodeId ? findNode(treeData, dragNodeId) : null;
+        renderNodeList(); 
+        renderASCII(previewTargetId, draggingNodeObj); 
+        updateStats(); 
+        renderBreadcrumbs(); 
+      }
 
       function renderBreadcrumbs() {
         if (!focusNodeId) { breadcrumbNav.style.display = 'none'; return; }
@@ -615,7 +906,7 @@
           return false;
         };
         findPath(treeData, focusNodeId, []);
-        const rootItem = document.createElement('span'); rootItem.className = 'breadcrumb-item'; rootItem.textContent = 'Root';
+        const rootItem = document.createElement('span'); rootItem.className = 'breadcrumb-item'; rootItem.textContent = 'All Nodes';
         rootItem.onclick = () => { focusNodeId = null; render(); }; breadcrumbNav.appendChild(rootItem);
         path.forEach(node => {
           const sep = document.createElement('span'); sep.className = 'breadcrumb-sep'; sep.textContent = ' / '; breadcrumbNav.appendChild(sep);
@@ -634,16 +925,28 @@
             const item = document.createElement('div'); item.className = 'node-item';
             const row = document.createElement('div'); 
             row.className = `node-row ${activeNodeId === node.id ? 'active' : ''}`;
-            row.dataset.id = node.id; // Added ID for sync lookup
-            row.onclick = (e) => { if (!e.target.classList.contains('node-label')) { activeNodeId = node.id; render(); } };
+            row.dataset.id = node.id; 
+            row.onclick = (e) => { if (!e.target.classList.contains('node-label') && !e.target.closest('.action-btn')) { activeNodeId = node.id; render(); } };
             const exp = document.createElement('div'); exp.className = `node-expander ${node.expanded ? 'expanded' : ''}`;
             exp.innerHTML = node.children.length > 0 ? '▸' : '';
             exp.onclick = (e) => { e.stopPropagation(); node.expanded = !node.expanded; render(); };
             const lbl = document.createElement('div'); lbl.className = 'node-label'; lbl.contentEditable = true; lbl.textContent = node.label;
             lbl.onfocus = () => { activeNodeId = node.id; renderASCII(); };
-            lbl.onblur = (e) => { if (node.label !== e.target.textContent) { node.label = e.target.textContent || '...'; saveToLocal(); renderASCII(); } };
+            lbl.oninput = (e) => {
+              node.label = e.target.textContent || '...';
+              renderASCII();
+              updateStats();
+              renderBreadcrumbs();
+            };
+            lbl.onblur = (e) => { saveToLocal(); };
             const acts = document.createElement('div'); acts.className = 'node-actions';
-            acts.innerHTML = `<button class="action-btn" onclick="window.focusOnNode('${node.id}')">F</button><button class="action-btn" onclick="window.addNode('${node.id}')">+</button>`;
+            acts.innerHTML = `
+              <button class="action-btn" title="Focus this node" onclick="window.focusOnNode('${node.id}')">F</button>
+              <button class="action-btn" title="Add sub-topic" onclick="window.addNode('${node.id}')">+</button>
+              <button class="action-btn text-red-400 hover:text-red-500 border-red-900/30" title="Delete node" onclick="window.deleteNode('${node.id}')">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16m-10 4v6m4-6v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"></path></svg>
+              </button>
+            `;
             row.append(exp, lbl, acts); item.append(row);
             if (node.children.length > 0) {
               const childContainer = document.createElement('div'); childContainer.className = `node-children ${node.expanded || searchTerm ? 'visible' : ''}`;
@@ -658,30 +961,55 @@
 
       function hasMatchingChild(n, t) { return n.children.some(c => c.label.toLowerCase().includes(t) || hasMatchingChild(c, t)); }
 
-      function renderASCII() {
+      function renderASCII(previewDropId = null, draggingNode = null) {
         if (!treeData.length) { asciiRender.innerHTML = ''; return; }
         let out = '';
-        const build = (nodes, prefix = '', isLast = true, isRoot = false) => {
+
+        const build = (nodes, prefix = '', isLast = true, isRoot = false, isGhost = false) => {
           nodes.forEach((node, i) => {
             const last = i === nodes.length - 1;
             const conn = isRoot ? '' : (last ? '└─ ' : '├─ ');
             const cPre = isRoot ? '' : prefix + (last ? '   ' : '│  ');
-            const highlight = activeNodeId === node.id ? 'highlight' : '';
-            out += `<span class="branch">${prefix}${conn}</span><span class="${isRoot?'root-node':''} ${highlight} node-text" data-id="${node.id}">${escapeHtml(node.label)}</span>\n`;
-            if (node.children.length) build(node.children, cPre, last, false);
+            
+            const highlight = !isGhost && activeNodeId === node.id ? 'highlight' : '';
+            const dragging = !isGhost && dragNodeId === node.id ? 'dragging' : '';
+            const ghostClass = isGhost ? 'ghost' : '';
+            
+            // Render the current node
+            out += `<span class="branch ${ghostClass}">${prefix}${conn}</span><span class="${isRoot && !isGhost ? 'root-node' : ''} ${highlight} ${dragging} ${ghostClass} node-text" data-id="${node.id}" draggable="true" title="Drag to move | Click to rename">${escapeHtml(node.label)}</span>\n`;
+            
+            // If this node is the drop target, inject the dragging subtree as ghosts IMMEDIATELY as the first child
+            if (node.id === previewDropId && draggingNode) {
+              build([draggingNode], cPre, node.children.length === 0, false, true);
+            }
+
+            if (node.children.length) build(node.children, cPre, last, false, isGhost);
           });
         };
-        build(treeData, '', true, true); asciiRender.innerHTML = out;
+
+        build(treeData, '', true, true, false); 
+        asciiRender.innerHTML = out;
       }
 
-      function focusNode(id) { const el = Array.from(document.querySelectorAll('.node-label')).find(e => e.textContent === 'New Node'); if (el) el.focus(); }
+      function focusNode(id) { 
+        const row = document.querySelector(`.node-row[data-id="${id}"]`);
+        if (row) {
+          const lbl = row.querySelector('.node-label');
+          if (lbl) {
+            lbl.focus();
+            setTimeout(() => {
+              document.execCommand('selectAll', false, null);
+            }, 0);
+          }
+        }
+      }
       function updateStats() {
         let c = 0, d = 0; const tr = (ns, cur) => { c += ns.length; if (ns.length) d = Math.max(d, cur); ns.forEach(n => tr(n.children, cur + 1)); };
         tr(treeData, 1); statNodes.textContent = `NODES: ${c}`; statDepth.textContent = `DEPTH: ${d}`;
       }
       function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
       function showToast(m) { toast.textContent = m; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2000); }
-      function copyToClipboard() { navigator.clipboard.writeText(asciiRender.innerText).then(() => showToast("Copied")); }
+      function copyToClipboard() { navigator.clipboard.writeText(asciiRender.innerText).then(() => showToast("Copied Tree")); }
       function exportJson() { const b = new Blob([JSON.stringify(treeData, null, 2)], { type: 'application/json' }); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = 'tree.json'; a.click(); }
       function importJson(e) { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = (re) => { try { treeData = JSON.parse(re.target.result); render(); saveToLocal(); } catch(e){} }; r.readAsText(f); }
 
