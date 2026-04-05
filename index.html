@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Neural Tree Architect v0.7.5</title>
+  <title>Neural Tree Architect v0.8.1</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -535,7 +535,7 @@
   <footer class="h-8 px-6 border-t border-slate-800 flex items-center justify-between text-[0.6rem] text-slate-500 bg-slate-950/80">
     <div class="flex gap-4"><span>SYSTEM_READY</span><span>AUTO_SAVE: ON</span></div>
     <div class="text-center">Made by <span id="footer-dev-link" class="text-slate-400 hover:text-accent cursor-pointer transition-colors">@chqrlzz</span></div>
-    <div class="mono opacity-50">V0.7.5_CORE</div>
+    <div class="mono opacity-50">V0.8.1_CORE</div>
   </footer>
 
   <!-- ── MODALS ── -->
@@ -751,26 +751,14 @@
 
         // Bi-Directional Preview Click & Edit
         asciiRender.onclick = (e) => {
+          if (dragNodeId) return; // Prevent click after long-press drag
           const node = e.target.closest('.node-text');
           if (node && node.dataset.id) {
             const id = node.dataset.id;
             
-            // Auto-expand parents to ensure node is visible in sidebar
-            const expandPath = (nodes, targetId) => {
-              for (const n of nodes) {
-                if (n.id === targetId) return true;
-                if (expandPath(n.children, targetId)) {
-                  n.expanded = true;
-                  return true;
-                }
-              }
-              return false;
-            };
-            
-            expandPath(treeData, id);
+            // Set active and trigger focus F
             activeNodeId = id;
-            focusNodeId = null; // Reset focus view to ensure node appears in the main list
-            render();
+            window.focusOnNode(id); 
             
             // Scroll and focus sidebar element
             setTimeout(() => {
@@ -830,6 +818,32 @@
         }
         activeNodeId = newNode.id; render(); saveToLocal();
         setTimeout(() => focusNode(newNode.id), 50);
+      }
+
+      function moveNodeUp(id) {
+        const parent = findParent(treeData, id);
+        const siblings = parent ? parent.children : treeData;
+        const idx = siblings.findIndex(n => n.id === id);
+        if (idx > 0) {
+          [siblings[idx], siblings[idx - 1]] = [siblings[idx - 1], siblings[idx]];
+          saveToLocal();
+          render();
+        } else {
+          showToast("Already at top");
+        }
+      }
+
+      function moveNodeDown(id) {
+        const parent = findParent(treeData, id);
+        const siblings = parent ? parent.children : treeData;
+        const idx = siblings.findIndex(n => n.id === id);
+        if (idx < siblings.length - 1) {
+          [siblings[idx], siblings[idx + 1]] = [siblings[idx + 1], siblings[idx]];
+          saveToLocal();
+          render();
+        } else {
+          showToast("Already at bottom");
+        }
       }
 
       function moveNode(id, targetId) {
@@ -926,7 +940,7 @@
             const row = document.createElement('div'); 
             row.className = `node-row ${activeNodeId === node.id ? 'active' : ''}`;
             row.dataset.id = node.id; 
-            row.onclick = (e) => { if (!e.target.classList.contains('node-label') && !e.target.closest('.action-btn')) { activeNodeId = node.id; render(); } };
+            row.onclick = (e) => { if (!e.target.classList.contains('node-label') && !e.target.closest('.action-btn') && !e.target.closest('.order-btn')) { activeNodeId = node.id; render(); } };
             const exp = document.createElement('div'); exp.className = `node-expander ${node.expanded ? 'expanded' : ''}`;
             exp.innerHTML = node.children.length > 0 ? '▸' : '';
             exp.onclick = (e) => { e.stopPropagation(); node.expanded = !node.expanded; render(); };
@@ -941,6 +955,10 @@
             lbl.onblur = (e) => { saveToLocal(); };
             const acts = document.createElement('div'); acts.className = 'node-actions';
             acts.innerHTML = `
+              <div class="flex flex-col gap-0.5 mr-0.5">
+                <button class="w-5 h-4 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded text-[0.5rem] transition-colors order-btn" title="Move Up" onclick="window.moveNodeUp('${node.id}')">▲</button>
+                <button class="w-5 h-4 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded text-[0.5rem] transition-colors order-btn" title="Move Down" onclick="window.moveNodeDown('${node.id}')">▼</button>
+              </div>
               <button class="action-btn" title="Focus this node" onclick="window.focusOnNode('${node.id}')">F</button>
               <button class="action-btn" title="Add sub-topic" onclick="window.addNode('${node.id}')">+</button>
               <button class="action-btn text-red-400 hover:text-red-500 border-red-900/30" title="Delete node" onclick="window.deleteNode('${node.id}')">
@@ -997,9 +1015,16 @@
           const lbl = row.querySelector('.node-label');
           if (lbl) {
             lbl.focus();
-            setTimeout(() => {
+            try {
+              const range = document.createRange();
+              range.selectNodeContents(lbl);
+              const sel = window.getSelection();
+              sel.removeAllRanges();
+              sel.addRange(range);
+            } catch(e) {
+              // Fallback for older environments
               document.execCommand('selectAll', false, null);
-            }, 0);
+            }
           }
         }
       }
@@ -1014,7 +1039,11 @@
       function importJson(e) { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = (re) => { try { treeData = JSON.parse(re.target.result); render(); saveToLocal(); } catch(e){} }; r.readAsText(f); }
 
       init();
-      window.addNode = addNode; window.deleteNode = deleteNode; window.focusOnNode = (id) => { focusNodeId = id; render(); };
+      window.addNode = addNode; 
+      window.deleteNode = deleteNode; 
+      window.moveNodeUp = moveNodeUp; 
+      window.moveNodeDown = moveNodeDown;
+      window.focusOnNode = (id) => { focusNodeId = id; render(); };
     })();
   </script>
 </body>
