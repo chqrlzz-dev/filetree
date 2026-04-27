@@ -1,15 +1,20 @@
 'use strict';
 
 /**
- * Entry point for the Neural Tree Architect.
+ * Main Application Orchestrator
+ * Responsibility: Execute system startup sequence.
  */
 document.addEventListener('DOMContentLoaded', () => {
-  // Initialize Global State
-  window.app = new TreeManager();
-  app.load();
-
-  // Initialize UI
-  UI.init();
-  
-  console.log("Neural Tree Architect v0.9.0 Initialized");
+  initializeSystem();
 });
+
+function initializeSystem() {
+  // 1. Initialize State Specialist
+  window.app = new TreeManager();
+  app.loadStateFromStorage();
+
+  // 2. Initialize UI Specialist
+  UIController.initializeApplication();
+  
+  console.log("Neural Tree Architect v0.9.3_CORE_READY");
+}
