@@ -418,33 +418,85 @@ const UIController = {
   handleRadialExport() {
     this.notifyUser("Generating Radial Mind Map...");
     this.els.radialContainer.innerHTML = '';
-    const width = 1800, height = 1800, radius = width / 2;
-    const data = { label: "Architecture", children: app.nodes };
-    const tree = d3.tree().size([2 * Math.PI, radius - 200]);
+    
+    const width = 1600;
+    const height = 1600;
+    const radius = width / 2;
+    
+    const data = { 
+      label: "Architecture", 
+      children: JSON.parse(JSON.stringify(app.nodes)) 
+    };
+    
+    const tree = d3.tree().size([2 * Math.PI, radius - 250]);
     const root = d3.hierarchy(data);
     tree(root);
+
     const svg = d3.select(this.els.radialContainer).append("svg")
-        .attr("width", width).attr("height", height)
-        .append("g").attr("transform", `translate(${width/2},${height/2})`);
-    svg.append("g").attr("fill", "none").attr("stroke", "#333").attr("stroke-opacity", 0.4).attr("stroke-width", 1.5)
-      .selectAll("path").data(root.links()).join("path")
-        .attr("d", d3.linkRadial().angle(d => d.x).radius(d => d.y));
-    svg.append("g").selectAll("circle").data(root.descendants()).join("circle")
-        .attr("transform", d => `rotate(${(d.x * 180 / Math.PI - 90)}) translate(${d.y},0)`)
-        .attr("fill", d => d.children ? "#fff" : "#888").attr("r", 4);
-    svg.append("g").attr("font-family", "Outfit").attr("font-size", 14).attr("fill", "#fff")
-      .selectAll("text").data(root.descendants()).join("text")
-        .attr("transform", d => `rotate(${(d.x * 180 / Math.PI - 90)}) translate(${d.y},0) rotate(${d.x >= Math.PI ? 180 : 0})`)
-        .attr("dy", "0.31em").attr("x", d => d.x < Math.PI === !d.children ? 6 : -6)
-        .attr("text-anchor", d => d.x < Math.PI === !d.children ? "start" : "end").text(d => d.data.label)
-      .clone(true).lower().attr("stroke", "#000").attr("stroke-width", 3);
+        .attr("width", width)
+        .attr("height", height)
+        .style("background-color", "#0a0a0a")
+        .append("g")
+        .attr("transform", `translate(${width/2},${height/2})`);
+
+    // Links
+    svg.append("g")
+        .attr("fill", "none")
+        .attr("stroke", "#333")
+        .attr("stroke-opacity", 0.4)
+        .attr("stroke-width", 1.5)
+      .selectAll("path")
+      .data(root.links())
+      .join("path")
+        .attr("d", d3.linkRadial()
+            .angle(d => d.x)
+            .radius(d => d.y));
+
+    // Nodes
+    const node = svg.append("g")
+      .selectAll("g")
+      .data(root.descendants())
+      .join("g")
+        .attr("transform", d => `rotate(${(d.x * 180 / Math.PI - 90)}) translate(${d.y},0)`);
+
+    node.append("circle")
+        .attr("fill", d => d.children ? "#fff" : "#555")
+        .attr("r", 4);
+
+    node.append("text")
+        .attr("transform", d => `rotate(${d.x >= Math.PI ? 180 : 0})`)
+        .attr("dy", "0.31em")
+        .attr("x", d => d.x < Math.PI === !d.children ? 8 : -8)
+        .attr("text-anchor", d => d.x < Math.PI === !d.children ? "start" : "end")
+        .attr("paint-order", "stroke")
+        .attr("stroke", "#000")
+        .attr("stroke-width", 3)
+        .attr("fill", "#fff")
+        .style("font-family", "Outfit, sans-serif")
+        .style("font-size", "14px")
+        .text(d => d.data.label);
+
+    // Give D3 a moment to finalize DOM before capture
     setTimeout(() => {
-      domtoimage.toPng(this.els.radialContainer).then((url) => {
+      domtoimage.toPng(this.els.radialContainer, {
+        width: width,
+        height: height,
+        style: {
+          visibility: 'visible',
+          left: '0',
+          top: '0'
+        }
+      }).then((url) => {
         const link = document.createElement('a');
-        link.download = `radial-map-${Date.now()}.png`; link.href = url; link.click();
+        link.download = `radial-map-${Date.now()}.png`;
+        link.href = url;
+        link.click();
         this.notifyUser("Radial map exported");
+      }).catch(err => {
+        console.error("Radial export failed", err);
+        this.notifyUser("Export failed");
       });
-    }, 500);
+    }, 600);
   },
 
   handleUndoRequest() {
@@ -467,24 +519,65 @@ const UIController = {
   },
 
   attachDragAndDropEvents() {
-    this.els.ascii.ondragstart = (e) => {
+    // 1. Drag Start
+    this.els.ascii.addEventListener('dragstart', (e) => {
       const el = e.target.closest('.node-text');
-      if (el) { this.dragNodeId = el.dataset.id; el.classList.add('dragging'); e.dataTransfer.setData('text/plain', el.dataset.id); }
-    };
-    this.els.ascii.ondragend = () => { this.dragNodeId = this.previewTargetId = null; this.renderApplication(); };
-    this.els.ascii.ondragover = (e) => {
-      e.preventDefault();
+      if (el) {
+        this.dragNodeId = el.dataset.id;
+        el.classList.add('dragging');
+        
+        // Critical: Set data for the drag operation to be valid
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', el.dataset.id);
+        
+        // Hide ghost until moved
+        setTimeout(() => el.style.opacity = '0.3', 0);
+      }
+    });
+
+    // 2. Drag End
+    this.els.ascii.addEventListener('dragend', (e) => {
+      const el = e.target.closest('.node-text');
+      if (el) {
+        el.classList.remove('dragging');
+        el.style.opacity = '1';
+      }
+      this.dragNodeId = null;
+      this.previewTargetId = null;
+      this.renderApplication();
+    });
+
+    // 3. Drag Over (on container)
+    this.els.ascii.addEventListener('dragover', (e) => {
+      e.preventDefault(); // Required to allow drop
+      e.dataTransfer.dropEffect = 'move';
+      
       const el = e.target.closest('.node-text');
       if (el && el.dataset.id !== this.dragNodeId) {
-        if (this.previewTargetId !== el.dataset.id) { this.previewTargetId = el.dataset.id; this.renderTreePreview(this.previewTargetId, app.findNodeById(this.dragNodeId)); }
-      } else if (!el && this.previewTargetId !== null) { this.previewTargetId = null; this.renderTreePreview(); }
-    };
-    this.els.ascii.ondrop = (e) => {
+        if (this.previewTargetId !== el.dataset.id) {
+          this.previewTargetId = el.dataset.id;
+          this.renderTreePreview(this.previewTargetId, app.findNodeById(this.dragNodeId));
+        }
+      } else if (!el && this.previewTargetId !== null) {
+        this.previewTargetId = null;
+        this.renderTreePreview();
+      }
+    });
+
+    // 4. Drop
+    this.els.ascii.addEventListener('drop', (e) => {
       e.preventDefault();
       const el = e.target.closest('.node-text');
-      if (el && this.dragNodeId && this.dragNodeId !== el.dataset.id) app.relocateNodeSubtree(this.dragNodeId, el.dataset.id);
-      this.dragNodeId = this.previewTargetId = null;
-    };
+      if (el && this.dragNodeId && this.dragNodeId !== el.dataset.id) {
+        app.relocateNodeSubtree(this.dragNodeId, el.dataset.id);
+      }
+      this.dragNodeId = null;
+      this.previewTargetId = null;
+    });
+
+    // Global preventive to allow dropping anywhere if needed
+    window.addEventListener('dragover', (e) => e.preventDefault(), false);
+    window.addEventListener('drop', (e) => e.preventDefault(), false);
   },
 
   attachPreviewClickEvents() {
