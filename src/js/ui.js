@@ -88,7 +88,6 @@ const UIController = {
     const row = document.createElement('div');
     row.className = `node-row ${this.activeNodeId === node.id ? 'active' : ''}`;
     row.dataset.id = node.id;
-    row.setAttribute('draggable', 'true'); // Sidebar nodes are also draggable
     row.onclick = (e) => this.handleNodeSelection(e, node);
 
     const expander = this.createExpanderElement(node);
@@ -213,7 +212,7 @@ const UIController = {
         
         // "Shared |" logic: Add visual spacing after deep branches with the depth color
         if (depth === 0 && !isActuallyLast) {
-          output += `<div class="branch ${myColorClass} px-2" style="height: 1.6rem; opacity: 0.2">│</div>\n`;
+          output += `<span class="branch ${myColorClass}">│</span>\n`;
         }
       }
     });
@@ -231,14 +230,13 @@ const UIController = {
       labelDisplay = `<span class="search-match">${labelDisplay}</span>`;
     }
 
+    // Prefix: Each segment uses the color of its OWN branch owner
     const prefixHtml = prefixData.map(p => `<span class="branch ${p.colorClass}">${p.char}</span>`).join('');
+
+    // Connector: Belongs to the current node
     const connector = isRoot ? '' : (isActuallyLast ? '└─ ' : '├─ ');
 
-    // Wrap the entire line in a draggable unit
-    return `
-      <div class="preview-line ${draggingClass}" data-id="${node.id}" draggable="true">
-        <span class="branch-wrap">${prefixHtml}<span class="branch ${colorClass}">${connector}</span></span><span class="${rootClass} ${highlightClass} ${colorClass} node-text">${labelDisplay}</span>
-      </div>`.trim() + '\n';
+    return `<span class="branch-wrap">${prefixHtml}<span class="branch ${colorClass}">${connector}</span></span><span class="${rootClass} ${highlightClass} ${draggingClass} ${colorClass} node-text" data-id="${node.id}" draggable="true">${labelDisplay}</span>\n`;
   },
 
   // ── EXPORT SPECIALISTS ──
@@ -435,7 +433,6 @@ const UIController = {
     tree(root);
 
     const svg = d3.select(this.els.radialContainer).append("svg")
-        .attr("xmlns", "http://www.w3.org/2000/svg")
         .attr("width", width)
         .attr("height", height)
         .style("background-color", "#0a0a0a")
@@ -481,8 +478,8 @@ const UIController = {
 
     // Give D3 a moment to finalize DOM before capture
     setTimeout(() => {
-      // Temporarily move into view for capture
-      this.els.radialContainer.style.left = '0';
+      // Temporarily make container visible for capture if needed by the library
+      const originalVisibility = this.els.radialContainer.style.visibility;
       this.els.radialContainer.style.visibility = 'visible';
 
       domtoimage.toPng(this.els.radialContainer, {
@@ -490,20 +487,18 @@ const UIController = {
         height: height,
         bgcolor: '#0a0a0a'
       }).then((url) => {
-        this.els.radialContainer.style.left = '-9999px';
-        this.els.radialContainer.style.visibility = 'hidden';
+        this.els.radialContainer.style.visibility = originalVisibility;
         const link = document.createElement('a');
         link.download = `radial-map-${Date.now()}.png`;
         link.href = url;
         link.click();
         this.notifyUser("Radial map exported");
       }).catch(err => {
-        this.els.radialContainer.style.left = '-9999px';
-        this.els.radialContainer.style.visibility = 'hidden';
+        this.els.radialContainer.style.visibility = originalVisibility;
         console.error("Radial export failed", err);
         this.notifyUser("Export failed");
       });
-    }, 1200);
+    }, 800);
   },
 
   handleUndoRequest() {
@@ -526,19 +521,30 @@ const UIController = {
   },
 
   attachDragAndDropEvents() {
-    const handleDragStart = (e) => {
-      const el = e.target.closest('.preview-line') || e.target.closest('.node-row');
+    // 1. Mouse down fallback to ensure draggable is active
+    this.els.ascii.addEventListener('mousedown', (e) => {
+      const el = e.target.closest('.node-text');
+      if (el) el.setAttribute('draggable', 'true');
+    });
+
+    // 2. Drag Start
+    this.els.ascii.addEventListener('dragstart', (e) => {
+      const el = e.target.closest('.node-text');
       if (el) {
         this.dragNodeId = el.dataset.id;
         el.classList.add('dragging');
+        
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', el.dataset.id);
+        
+        // Custom drag image or behavior can go here
         setTimeout(() => el.style.opacity = '0.3', 0);
       }
-    };
+    });
 
-    const handleDragEnd = (e) => {
-      const el = e.target.closest('.preview-line') || e.target.closest('.node-row');
+    // 3. Drag End
+    this.els.ascii.addEventListener('dragend', (e) => {
+      const el = e.target.closest('.node-text');
       if (el) {
         el.classList.remove('dragging');
         el.style.opacity = '1';
@@ -546,19 +552,14 @@ const UIController = {
       this.dragNodeId = null;
       this.previewTargetId = null;
       this.renderApplication();
-    };
+    });
 
-    // Global listeners for Sidebar AND Preview
-    this.els.ascii.addEventListener('dragstart', handleDragStart);
-    this.els.ascii.addEventListener('dragend', handleDragEnd);
-    this.els.nodesRoot.addEventListener('dragstart', handleDragStart);
-    this.els.nodesRoot.addEventListener('dragend', handleDragEnd);
-
-    const handleDragOver = (e) => {
+    // 4. Drag Over
+    this.els.ascii.addEventListener('dragover', (e) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       
-      const el = e.target.closest('.preview-line') || e.target.closest('.node-row');
+      const el = e.target.closest('.node-text');
       if (el && el.dataset.id !== this.dragNodeId) {
         if (this.previewTargetId !== el.dataset.id) {
           this.previewTargetId = el.dataset.id;
@@ -568,22 +569,18 @@ const UIController = {
         this.previewTargetId = null;
         this.renderTreePreview();
       }
-    };
+    });
 
-    const handleDrop = (e) => {
+    // 5. Drop
+    this.els.ascii.addEventListener('drop', (e) => {
       e.preventDefault();
-      const el = e.target.closest('.preview-line') || e.target.closest('.node-row');
+      const el = e.target.closest('.node-text');
       if (el && this.dragNodeId && this.dragNodeId !== el.dataset.id) {
         app.relocateNodeSubtree(this.dragNodeId, el.dataset.id);
       }
       this.dragNodeId = null;
       this.previewTargetId = null;
-    };
-
-    this.els.ascii.addEventListener('dragover', handleDragOver);
-    this.els.ascii.addEventListener('drop', handleDrop);
-    this.els.nodesRoot.addEventListener('dragover', handleDragOver);
-    this.els.nodesRoot.addEventListener('drop', handleDrop);
+    });
 
     window.addEventListener('dragover', (e) => e.preventDefault(), false);
     window.addEventListener('drop', (e) => e.preventDefault(), false);
@@ -591,7 +588,7 @@ const UIController = {
 
   attachPreviewClickEvents() {
     this.els.ascii.onclick = (e) => {
-      const el = e.target.closest('.preview-line');
+      const el = e.target.closest('.node-text');
       if (el) { this.activeNodeId = el.dataset.id; this.renderApplication(); this.scrollToAndFocus(el.dataset.id); }
     };
   },

@@ -70,7 +70,7 @@ main {
   flex: 1;
   display: grid;
   grid-template-columns: var(--panel-width) 1fr;
-  overflow: hidden;
+  overflow: hidden; /* Crucial for internal scrolling */
 }
 
 aside#sidebar {
@@ -132,29 +132,21 @@ section#canvas {
 }
 
 #ascii-render {
-  background: #111111; padding: 2.5rem; border-radius: 4px;
+  background: #111111; padding: 4rem; border-radius: 4px;
   border: 1px solid var(--border); white-space: pre; line-height: 1.6;
   font-size: 0.95rem; color: #999; box-shadow: 0 40px 100px rgba(0,0,0,0.8);
   min-width: min-content; position: relative;
-  user-select: none;
 }
 
+/* Floating Preview Controls - Fixed Layout */
 .preview-controls {
-  position: absolute; top: 1rem; right: 1rem; display: flex; gap: 0.5rem; z-index: 10;
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  z-index: 10;
 }
-
-.preview-line {
-  display: block; cursor: grab; padding: 0 0.5rem; border-radius: 4px;
-  transition: background 0.1s; white-space: nowrap;
-}
-.preview-line:hover { background: rgba(255,255,255,0.04); }
-.preview-line:active { cursor: grabbing; }
-.preview-line.dragging { opacity: 0.2; background: var(--bg-raised); }
-
-.node-text { border-radius: 3px; padding: 0 4px; display: inline-block; pointer-events: none; }
-.highlight { background: #fff !important; color: #000 !important; font-weight: 700; }
-.branch { color: #444; transition: color 0.2s; }
-.root-node { color: #fff; font-weight: 800; }
 
 .btn {
   padding: 0.5rem 0.8rem; border-radius: 6px; font-size: 0.75rem;
@@ -173,7 +165,6 @@ section#canvas {
 }
 .node-row:hover { background: var(--bg-raised); }
 .node-row.active { background: var(--bg-raised); border-color: var(--border); }
-.node-row.dragging { opacity: 0.3; }
 
 .node-expander {
   width: 18px; height: 18px; display: flex; align-items: center;
@@ -194,6 +185,7 @@ section#canvas {
 .node-children { margin-left: 1.2rem; border-left: 1px solid var(--border); display: none; }
 .node-children.visible { display: block; }
 
+/* 12-Level Depth Analysis Colors */
 .depth-0  { color: #ffffff !important; font-weight: 700; }
 .depth-1  { color: #fbbf24 !important; }
 .depth-2  { color: #10b981 !important; }
@@ -207,11 +199,35 @@ section#canvas {
 .depth-10 { color: #6366f1 !important; }
 .depth-11 { color: #14b8a6 !important; }
 
-#radial-export-container {
-  position: absolute; top: 0; left: -9999px;
-  width: 1600px; height: 1600px; background: #0a0a0a;
-  overflow: hidden; z-index: -1000;
+#ascii-render .node-text { 
+  cursor: grab; 
+  border-radius: 3px; 
+  transition: 0.1s; 
+  padding: 0 4px; 
+  display: inline-block; 
+  pointer-events: auto !important;
+  user-select: none; /* Prevent text selection during drag */
+  -webkit-user-drag: element; /* Safari support */
 }
+#ascii-render .node-text:active { cursor: grabbing; }
+#ascii-render .node-text:hover { background: rgba(255,255,255,0.08); color: #fff !important; }
+#ascii-render .node-text.dragging { opacity: 0.2; pointer-events: none !important; }
+#ascii-render .highlight { background: #fff; color: #000 !important; font-weight: 700; }
+#ascii-render .branch { color: #444; transition: color 0.2s; user-select: none; }
+#ascii-render .root-node { color: #fff; font-weight: 800; }
+
+/* Radial Export Overlay (Hidden) */
+#radial-export-container {
+  position: absolute; 
+  top: 0; 
+  left: -5000px; /* Better than fixed -10000 for some browsers */
+  width: 1600px; 
+  height: 1600px; 
+  background: #0a0a0a;
+  overflow: hidden;
+  visibility: hidden;
+}
+
 
 .dropdown { position: relative; }
 .dropdown-content {
